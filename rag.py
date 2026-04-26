@@ -129,9 +129,40 @@ class Store:
 
     def _retrieve_lore(self, query: str, top_k: int) -> list[str]:
         query_tokens = _tokenize(query)
+        q_lower = query.lower()
+
+        # Collect every name/alias that the query explicitly mentions
+        mentioned: set[str] = set()
+        for entry in self._entries:
+            for person in entry.get("people", []):
+                if person and person.lower() in q_lower:
+                    mentioned.add(person.lower())
+            for alias in entry.get("aliases", []):
+                if alias and alias.lower() in q_lower:
+                    mentioned.add(alias.lower())
+
+        # When names are mentioned, restrict candidates to their entries only
+        if mentioned:
+            def _person_match(entry: dict) -> bool:
+                for person in entry.get("people", []):
+                    if person and person.lower() in mentioned:
+                        return True
+                for alias in entry.get("aliases", []):
+                    if alias and alias.lower() in mentioned:
+                        return True
+                return False
+
+            all_matches = [e for e in self._entries if _person_match(e)]
+            # Prefer focused entries (few people) over roster entries (many people).
+            # Class year lists have 7–12 people and flood context with unrelated names.
+            focused = [e for e in all_matches if len(e.get("people", [])) <= 4]
+            candidates = focused if focused else all_matches
+        else:
+            candidates = self._entries
+
         scored = [
             (_score_entry(e, query, query_tokens), e)
-            for e in self._entries
+            for e in candidates
         ]
         scored.sort(key=lambda x: x[0], reverse=True)
         return [_format_entry(e) for score, e in scored[:top_k] if score > 0]

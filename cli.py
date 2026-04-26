@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
 """
-CLI client for the Groq RAG Chat backend.
+CLI client for the OpenRouter RAG Chat backend.
 
 Usage:
     python cli.py                               # connect to localhost:8000
     python cli.py --host http://localhost:8000
-    python cli.py --model llama-3.3-70b-versatile
+    python cli.py --model deepseek/deepseek-r1-distill-qwen-32b
     python cli.py --file /path/to/doc.txt       # load a file at startup
+    python cli.py --thinking                    # show model reasoning
 
 Commands (type during chat):
     /load <path>   load a local file into the backend
     /status        show model, file, history info
     /clear         clear conversation history
-    /model <name>  switch Groq model
+    /model <name>  switch model
     /quit          exit
-
-Available Groq models (free tier):
-    llama-3.3-70b-versatile   (default, best quality)
-    llama3-8b-8192            (fastest)
-    mixtral-8x7b-32768        (long context)
 """
 
 import argparse
@@ -29,13 +25,49 @@ import httpx
 DEFAULT_HOST = "http://localhost:8000"
 
 
-def stream_chat(client: httpx.Client, host: str, message: str) -> str:
+_DIM = "\033[2m\033[3m"
+_RESET = "\033[0m"
+
+
+def _format_thinking(text: str, in_think: bool) -> tuple[str, bool]:
+    out = []
+    while text:
+        if not in_think:
+            idx = text.find("<think>")
+            if idx == -1:
+                out.append(text)
+                text = ""
+            else:
+                out.append(text[:idx])
+                out.append(f"\n{_DIM}")
+                in_think = True
+                text = text[idx + 7:]
+        else:
+            idx = text.find("</think>")
+            if idx == -1:
+                out.append(text)
+                text = ""
+            else:
+                out.append(text[:idx])
+                out.append(f"{_RESET}\n")
+                in_think = False
+                text = text[idx + 8:]
+    return "".join(out), in_think
+
+
+def stream_chat(client: httpx.Client, host: str, message: str, show_thinking: bool = False) -> str:
     full = []
-    with client.stream("POST", f"{host}/chat", json={"message": message, "stream": True}, timeout=120) as r:
+    in_think = False
+    payload = {"message": message, "stream": True, "show_thinking": show_thinking}
+    with client.stream("POST", f"{host}/chat", json=payload, timeout=120) as r:
         r.raise_for_status()
         for chunk in r.iter_text():
-            print(chunk, end="", flush=True)
             full.append(chunk)
+            if show_thinking:
+                formatted, in_think = _format_thinking(chunk, in_think)
+                print(formatted, end="", flush=True)
+            else:
+                print(chunk, end="", flush=True)
     print()
     return "".join(full)
 
@@ -71,10 +103,11 @@ def set_model(client: httpx.Client, host: str, model: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Groq RAG Chat CLI")
+    parser = argparse.ArgumentParser(description="OpenRouter RAG Chat CLI")
     parser.add_argument("--host", default=DEFAULT_HOST, help="Backend URL")
-    parser.add_argument("--model", default=None, help="Groq model name")
+    parser.add_argument("--model", default=None, help="Model name")
     parser.add_argument("--file", default=None, help="File to load at startup")
+    parser.add_argument("--thinking", action="store_true", help="Show model reasoning")
     args = parser.parse_args()
 
     host = args.host.rstrip("/")
@@ -141,7 +174,7 @@ def main() -> None:
 
             print("bot> ", end="", flush=True)
             try:
-                stream_chat(client, host, user_input)
+                stream_chat(client, host, user_input, args.thinking)
             except httpx.HTTPStatusError as e:
                 print(f"\n[error] {e.response.status_code}: {e.response.text}")
             except Exception as e:
