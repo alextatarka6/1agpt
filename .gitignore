@@ -1,5 +1,6 @@
 # environment
 .env
+.env-example
 
 # lore data
 lore.json
