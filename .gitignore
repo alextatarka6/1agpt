@@ -1,0 +1,13 @@
+# environment
+.env
+
+# lore data
+lore.json
+
+# python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
