@@ -1,6 +1,7 @@
-# environment
+# environment / secrets
 .env
-.env-example
+.env.local
+.env.*.local
 
 # lore data
 lore.json
@@ -12,3 +13,13 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# node / frontend
+node_modules/
+dist/
+.cache/
+
+# editor / OS
+.DS_Store
+.vscode/
+*.swp

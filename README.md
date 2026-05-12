@@ -1,62 +1,117 @@
-# 1agpt
+# 1AGPT
 
-A FastAPI backend + CLI for conversational chat powered by Groq, with retrieval-augmented generation (RAG) over a local lore file.
+RAG-augmented chat powered by OpenRouter (DeepSeek R1 / GPT-4o / Claude), with a ChatGPT-inspired React frontend.
 
-## How it works
+## Project structure
 
-Each message searches the loaded file for relevant entries and injects them into the model's context before generating a response. For structured lore JSON files, retrieval is scored using trigger phrases, people names, aliases, and tags — not just keyword overlap.
+```
+1agpt/
+├── backend/               ← FastAPI backend
+│   ├── app/
+│   │   ├── main.py        ← FastAPI app (lifespan, CORS, routers)
+│   │   ├── config.py      ← Pydantic settings (reads .env)
+│   │   ├── state.py       ← In-memory state (history, model)
+│   │   ├── dependencies.py← Depends factories
+│   │   ├── models/schemas.py  ← Pydantic v2 request/response models
+│   │   ├── routers/
+│   │   │   ├── chat.py    ← POST /chat (streaming)
+│   │   │   ├── files.py   ← POST /load-file, POST /upload-file
+│   │   │   └── system.py  ← /status, /history, /set-model
+│   │   └── services/llm.py← Prompt building + streaming generator
+│   ├── rag.py             ← RAG store (lore + plain text)
+│   ├── .env               ← API keys (not committed)
+│   └── requirements.txt
+├── frontend/              ← React + TypeScript + Tailwind
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── types.ts
+│   │   ├── api/client.ts
+│   │   ├── hooks/useChat.ts
+│   │   └── components/
+│   │       ├── Sidebar.tsx
+│   │       ├── ChatArea.tsx
+│   │       ├── Message.tsx
+│   │       ├── InputBar.tsx
+│   │       └── Toast.tsx
+│   ├── vite.config.ts
+│   └── package.json
+├── main.py                ← Original single-file backend (preserved)
+└── rag.py
+```
+
+## Prerequisites
+
+- Python 3.11+
+- Node.js 18+ (v22 recommended — use `nvm use 22` if you have nvm)
+- An [OpenRouter](https://openrouter.ai) API key
 
 ## Setup
 
+### 1. Environment
+
+Create `backend/.env`:
+
+```
+OPEN_ROUTER_API_KEY=sk-or-v1-...
+```
+
+The frontend proxies to `http://localhost:8000` by default. Override by setting `VITE_API_URL` in `frontend/.env.local` if needed.
+
+### 2. Backend
+
 ```bash
+cd backend
 pip install -r requirements.txt
+uvicorn app.main:app --reload
 ```
 
-Create a `.env` file in the project root:
+OpenAPI docs: **http://localhost:8000/docs**
 
-```
-GROQ_API_KEY=your_key_here
-```
+### 3. Frontend
 
-## Running
-
-**Terminal 1 — start the backend:**
 ```bash
-uvicorn main:app --reload
+cd frontend
+npm install
+npm run dev
 ```
 
-**Terminal 2 — start the CLI:**
-```bash
-python cli.py --file /path/to/lore.json
-```
-
-## CLI commands
-
-| Command | Description |
-|---|---|
-| `/load <path>` | Load a file into the backend |
-| `/model <name>` | Switch Groq model |
-| `/status` | Show current model, file, and history info |
-| `/clear` | Clear conversation history |
-| `/help` | Show help |
-| `/quit` | Exit |
-
-## Models
-
-Default: `llama-3.3-70b-versatile`
-
-Other free-tier Groq options:
-- `llama3-8b-8192` — fastest
-- `mixtral-8x7b-32768` — longest context window
+Open **http://localhost:5173**
 
 ## API endpoints
 
 | Method | Path | Description |
-|---|---|---|
-| `POST` | `/chat` | Send a message (streams by default) |
-| `POST` | `/load-file` | Load a file by server-side path |
-| `POST` | `/upload-file` | Upload a file directly |
-| `POST` | `/set-model` | Switch model |
-| `GET` | `/history` | Get conversation history |
+|--------|------|-------------|
+| `POST` | `/chat` | Stream or non-stream RAG-augmented chat |
+| `POST` | `/upload-file` | Upload a `.txt`, `.md`, or `.json` lore file |
+| `POST` | `/load-file` | Load a file from the server filesystem |
+| `POST` | `/set-model` | Switch the active LLM model |
+| `GET`  | `/history` | Get conversation history |
 | `DELETE` | `/history` | Clear conversation history |
-| `GET` | `/status` | Show current state |
+| `GET`  | `/status` | Model, file, and history status |
+
+## Available models (via OpenRouter)
+
+| Label | Model ID |
+|-------|----------|
+| DeepSeek R1 | `deepseek/deepseek-r1-distill-qwen-32b` |
+| GPT-4o | `openai/gpt-4o` |
+| Claude 3.5 Sonnet | `anthropic/claude-3.5-sonnet` |
+
+## Frontend features
+
+- **Streaming responses** via `ReadableStream` — tokens appear as they arrive
+- **Markdown rendering** with syntax-highlighted code blocks (One Dark theme)
+- **Conversation threads** persisted in `localStorage`
+- **File upload** via paperclip for RAG context injection
+- **Model switcher** in the sidebar
+- **Stop generation** button mid-stream
+- **Dark theme** matching ChatGPT's palette (#212121 / #2f2f2f / #171717)
+
+## CLI (original)
+
+The original CLI still works against the old `main.py`:
+
+```bash
+uvicorn main:app --reload   # terminal 1
+python cli.py --file lore.json  # terminal 2
+```
